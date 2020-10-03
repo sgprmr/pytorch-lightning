@@ -1,5 +1,9 @@
 import os
+
+import pytest
+
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.callbacks import ModelCheckpoint
 from tests.base import EvalModelTemplate
 
 
@@ -60,3 +64,26 @@ def test_mc_called(tmpdir):
     trainer = Trainer(max_epochs=3, checkpoint_callback=False)
     trainer.fit(val_train_model)
     assert len(trainer.dev_debugger.checkpoint_callback_history) == 0
+
+
+@pytest.mark.parametrize("period", [0.2, 0.5, 0.8, 1.])
+@pytest.mark.parametrize("epochs", [2, 5])
+def test_model_checkpoint_period(tmpdir, epochs, period):
+    os.environ['PL_DEV_DEBUG'] = '1'
+
+    model = EvalModelTemplate()
+    model.validation_step = model.validation_step__decreasing
+
+    checkpoint_callback = ModelCheckpoint(filepath=tmpdir, save_top_k=-1)
+    trainer = Trainer(
+        default_root_dir=tmpdir,
+        early_stop_callback=False,
+        checkpoint_callback=checkpoint_callback,
+        max_epochs=epochs,
+        val_check_interval=period,
+    )
+    trainer.fit(model)
+
+    # check that the correct ckpts were created
+    expected_calls = epochs * int(1 / period)
+    assert len(trainer.dev_debugger.checkpoint_callback_history) == expected_calls
