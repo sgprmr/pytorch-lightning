@@ -163,8 +163,8 @@ def test_model_checkpoint_format_checkpoint_name(tmpdir):
     ckpt_name = ModelCheckpoint(monitor='early_stop_on', filepath='').format_checkpoint_name(5, 4, {})
     assert ckpt_name == 'epoch=5-step=4.ckpt'
     # CWD
-    ckpt_name = ModelCheckpoint(monitor='early_stop_on', filepath='.').format_checkpoint_name(3, 4, {})
-    assert Path(ckpt_name) == Path('.') / 'epoch=3-step=4.ckpt'
+    ckpt_name = ModelCheckpoint(monitor='early_stop_on', filepath='../').format_checkpoint_name(3, 4, {})
+    assert Path(ckpt_name).absolute() == (Path('..') / 'epoch=3-step=4.ckpt').absolute()
     # dir does not exist so it is used as filename
     filepath = tmpdir / 'dir'
     ckpt_name = ModelCheckpoint(monitor='early_stop_on', filepath=filepath, prefix='test').format_checkpoint_name(3, 4, {})
@@ -183,14 +183,14 @@ def test_model_checkpoint_save_last(tmpdir):
     """Tests that save_last produces only one last checkpoint."""
     seed_everything()
     model = EvalModelTemplate()
-    epochs = 3
+    _chpt_name_last = ModelCheckpoint.CHECKPOINT_NAME_LAST
     ModelCheckpoint.CHECKPOINT_NAME_LAST = 'last-{epoch}'
     model_checkpoint = ModelCheckpoint(monitor='early_stop_on', filepath=tmpdir / '{step}', save_top_k=-1, save_last=True)
     trainer = Trainer(
         default_root_dir=tmpdir,
         early_stop_callback=False,
         checkpoint_callback=model_checkpoint,
-        max_epochs=epochs,
+        max_epochs=3,
         logger=False,
     )
     trainer.fit(model)
@@ -199,8 +199,8 @@ def test_model_checkpoint_save_last(tmpdir):
     )
     last_filename = last_filename + '.ckpt'
     assert str(tmpdir / last_filename) == model_checkpoint.last_model_path
-    assert set(os.listdir(tmpdir)) == set([f'step={i}.ckpt' for i in [19, 29, 30]] + [last_filename])
-    ModelCheckpoint.CHECKPOINT_NAME_LAST = 'last'
+    assert set(os.listdir(tmpdir)) == set([f'step={i}.ckpt' for i in [9, 19, 29]] + [last_filename])
+    ModelCheckpoint.CHECKPOINT_NAME_LAST = _chpt_name_last
 
 
 def test_invalid_top_k(tmpdir):
@@ -252,13 +252,13 @@ def test_model_checkpoint_none_monitor(tmpdir):
 
     # these should not be set if monitor is None
     assert checkpoint_callback.monitor is None
-    assert checkpoint_callback.best_model_path == checkpoint_callback.last_model_path == tmpdir / 'step=20.ckpt'
+    assert checkpoint_callback.best_model_path == checkpoint_callback.last_model_path == tmpdir / 'step=19.ckpt'
     assert checkpoint_callback.best_model_score == 0
     assert checkpoint_callback.best_k_models == {}
     assert checkpoint_callback.kth_best_model_path == ''
 
     # check that the correct ckpts were created
-    expected = [f'step={i}.ckpt' for i in [9, 19, 20]]
+    expected = [f'step={i}.ckpt' for i in [9, 19]]
     assert set(os.listdir(tmpdir)) == set(expected)
 
 
@@ -372,12 +372,12 @@ def test_default_checkpoint_behavior(tmpdir):
 
     assert len(results) == 1
     assert results[0]['test_acc'] >= 0.80
-    assert len(trainer.dev_debugger.checkpoint_callback_history) == 4
+    assert len(trainer.dev_debugger.checkpoint_callback_history) == 3
 
     # make sure the checkpoint we saved has the metric in the name
     ckpts = os.listdir(os.path.join(tmpdir, 'lightning_logs', 'version_0', 'checkpoints'))
     assert len(ckpts) == 1
-    assert ckpts[0] == 'epoch=2-step=15.ckpt'
+    assert ckpts[0] == 'epoch=2-step=14.ckpt'
 
 
 def test_ckpt_metric_names_results(tmpdir):
@@ -448,9 +448,10 @@ def test_model_checkpoint_save_last_checkpoint_contents(tmpdir):
     path_last_epoch = str(tmpdir / f"epoch={num_epochs - 1}.ckpt")
     path_last = str(tmpdir / "last.ckpt")
     assert path_last == model_checkpoint.last_model_path
-    assert os.path.isfile(path_last_epoch)
 
+    assert os.path.isfile(path_last_epoch)
     ckpt_last_epoch = torch.load(path_last_epoch)
+    assert os.path.isfile(path_last)
     ckpt_last = torch.load(path_last)
     assert all(ckpt_last_epoch[k] == ckpt_last[k] for k in ("epoch", "global_step"))
 
@@ -532,7 +533,12 @@ def test_model_checkpoint_options(tmpdir, save_top_k, save_last, file_prefix, ex
     losses = [10, 9, 2.8, 5, 2.5]
 
     checkpoint_callback = ModelCheckpoint(
-        tmpdir, monitor='checkpoint_on', save_top_k=save_top_k, save_last=save_last, prefix=file_prefix, verbose=1
+        tmpdir / '{epoch}',
+        monitor='checkpoint_on',
+        save_top_k=save_top_k,
+        save_last=save_last,
+        prefix=file_prefix,
+        verbose=1,
     )
     checkpoint_callback.save_function = mock_save_function
     trainer = Trainer()

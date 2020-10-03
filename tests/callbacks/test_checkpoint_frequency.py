@@ -66,8 +66,8 @@ def test_mc_called(tmpdir):
     assert len(trainer.dev_debugger.checkpoint_callback_history) == 0
 
 
-@pytest.mark.parametrize("period", [0.2, 0.5, 0.8, 1.])
-@pytest.mark.parametrize("epochs", [2, 5])
+@pytest.mark.parametrize("period", [0.2, 0.3, 0.5, 0.8, 1.])
+@pytest.mark.parametrize("epochs", [1, 2])
 def test_model_checkpoint_period(tmpdir, epochs, period):
     os.environ['PL_DEV_DEBUG'] = '1'
 
@@ -84,6 +84,7 @@ def test_model_checkpoint_period(tmpdir, epochs, period):
     )
     trainer.fit(model)
 
+    extra_on_train_end = (1 / period) % 1 > 0
     # check that the correct ckpts were created
-    expected_calls = epochs * int(1 / period)
+    expected_calls = epochs * int(1 / period) + int(extra_on_train_end)
     assert len(trainer.dev_debugger.checkpoint_callback_history) == expected_calls
